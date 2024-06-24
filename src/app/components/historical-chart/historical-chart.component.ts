@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DataService } from '../../services/data.service';
 import { Chart } from 'chart.js';
@@ -18,11 +18,11 @@ import { Chart } from 'chart.js';
 export class HistoricalChartComponent implements OnInit {
   historicalData: any[] = [];
   chart: Chart | undefined;
-
-  constructor(private dataService: DataService) {}
+  service = inject(DataService);
 
   ngOnInit() {
-    this.dataService.getInstruments().subscribe((data) => {
+    this.service.getInstruments().subscribe((data) => {
+      console.log(data)
       this.historicalData = data;
       this.renderChart();
     });

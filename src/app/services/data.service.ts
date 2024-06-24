@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Signal, signal } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { BehaviorSubject, Observable, map, take } from 'rxjs';
+import { BehaviorSubject, Observable, map, retry, take, tap } from 'rxjs';
 import { environment } from '../environments/environment';
 
 @Injectable({
@@ -10,7 +10,7 @@ export class DataService {
   private apiUrl = `${environment.baseUrl}/api`;
   private assetId = 'AUD/CAD';
 
-  public token$: BehaviorSubject<string> = new BehaviorSubject('');
+  public token = signal('');
 
   constructor(private http: HttpClient) {}
 
@@ -23,38 +23,32 @@ export class DataService {
   }
 
   getToken(): void {
-    let body = `grant_type=${environment.grant_type}&client_id=${environment.client_id}&username=${environment.username}&password=${environment.password}`;
+    const body = `grant_type=${environment.grant_type}&client_id=${environment.client_id}&username=${environment.username}&password=${environment.password}`;
     this.http
-      .post(
-        `${environment.baseUrl}/identity/realms/fintatech/protocol/openid-connect/token`,
-        body,
-        {
-          headers: new HttpHeaders().set(
-            'Content-Type',
-            'application/x-www-form-urlencoded'
-          ),
-        }
-      )
+      .post(`/identity/realms/fintatech/protocol/openid-connect/token`, body, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      })
       .pipe(
-        map((data: any) => {
-          console.log(data);
-          return this.token$.next(data.access_token);
+        tap((data: any) => {
+          this.token.set(data.access_token);
+          localStorage.setItem('token', data.access_token);
         }),
         take(1)
       )
       .subscribe();
   }
 
-  getInstruments(): Observable<any[]> {
+  getInstruments() {
+    const token = localStorage.getItem('token');
     return this.http
-      .get(
-        `${this.apiUrl}/instruments/v1/instruments?provider=oanda&kind=forex`,
-        {
-          headers: {
-            Authorization: `Bearer ${this.token$.getValue()}`,
-          },
-        }
-      )
+      .get(`/api/instruments/v1/instruments?provider=oanda&kind=forex`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Access-Control-Allow-Origin': '*',
+        },
+      })
       .pipe(map((res: any) => res.data));
   }
 }
