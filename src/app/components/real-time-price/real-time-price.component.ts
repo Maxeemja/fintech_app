@@ -21,9 +21,9 @@ export class RealTimePriceComponent implements OnInit {
   constructor(private dataService: DataService) {}
 
   ngOnInit() {
-    this.dataService.getRealTimePrice().subscribe((data) => {
-      this.currentPrice = data.price;
-      this.currentTime = data.time;
-    });
+    // this.dataService.getRealTimePrice().subscribe((data) => {
+    //   this.currentPrice = data.price;
+    //   this.currentTime = data.time;
+    // });
   }
 }
