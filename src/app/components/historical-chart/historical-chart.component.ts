@@ -1,63 +1,128 @@
 // @ts-nocheck
-import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ViewChild,
+  ElementRef,
+} from '@angular/core';
+import {
+  Chart,
+  Legend,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  TimeScale,
+  Title,
+  Tooltip,
+} from 'chart.js';
+import { Subject, map, switchMap, takeUntil } from 'rxjs';
 import { DataService } from '../../services/data.service';
-import { Chart } from 'chart.js';
+import { Asset } from '../../shared/interfaces/asset.interface';
+import 'chartjs-adapter-date-fns';
+
+Chart.register(
+  TimeScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  LineController
+);
 
 @Component({
   selector: 'app-historical-chart',
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div>
-      <h2>Historical Price Chart</h2>
+    <div *ngIf="currentAsset" class="chart-container">
+      <h2>Historical Price Chart for {{ currentAsset.symbol }}</h2>
       <canvas #historicalChart></canvas>
     </div>
   `,
 })
-export class HistoricalChartComponent implements OnInit {
-  historicalData: any[] = [];
-  chart: Chart | undefined;
-  service = inject(DataService);
+export class HistoricalChartComponent implements OnInit, OnDestroy {
+  @ViewChild('historicalChart') chartCanvas!: ElementRef;
+  currentAsset: Asset | null = null;
+  chart!: Chart;
+  private destroy$ = new Subject();
+
+  constructor(private dataService: DataService) {}
 
   ngOnInit() {
-    this.service.getInstruments().subscribe((data) => {
-      console.log(data)
-      this.historicalData = data;
-      this.renderChart();
-    });
+    this.dataService
+      .getCurrentAsset()
+      .pipe(
+        takeUntil(this.destroy$),
+        switchMap((asset) => {
+          if (asset) {
+            this.currentAsset = asset;
+            return this.dataService.getBars(
+              asset.id,
+              'oanda',
+              1,
+              'minute',
+              100
+            );
+          }
+          return [];
+        }),
+        map((res) => res.data)
+      )
+      .subscribe((data) => {
+        this.renderChart(data);
+      });
   }
 
-  renderChart() {
-    const canvas = document.querySelector(
-      'canvas#historicalChart'
-    ) as HTMLCanvasElement;
-    this.chart = new Chart(canvas, {
+  renderChart(data: any[]) {
+    if (this.chart) {
+      this.chart.destroy();
+    }
+
+    console.log(data);
+
+    this.chart = new Chart(this.chartCanvas.nativeElement, {
       type: 'line',
       data: {
-        labels: this.historicalData.map((d) => d.time),
         datasets: [
           {
-            label: 'Historical Price',
-            data: this.historicalData.map((d) => d.price),
+            label: 'Close Price',
+            data: data.map((d) => ({ x: new Date(d.t), y: d.v })),
             backgroundColor: 'rgba(54, 162, 235, 0.2)',
             borderColor: 'rgba(54, 162, 235, 1)',
-            borderWidth: 1,
+            borderWidth: 2, // Increased for visibility
+            pointRadius: 3, // Add points to the line
+            pointBackgroundColor: 'rgba(54, 162, 235, 1)',
           },
         ],
       },
       options: {
         scales: {
-          xAxes: [
-            {
-              type: 'time',
-              time: {
-                unit: 'day',
+          x: {
+            type: 'time',
+            time: {
+              unit: 'minute',
+              displayFormats: {
+                second: 'HH:mm:ss',
+                minute: 'HH:mm',
               },
             },
-          ],
+          },
+          y: {
+            type: 'linear',
+            beginAtZero: true,
+          },
         },
       },
     });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next(true);
+    this.destroy$.complete();
   }
 }

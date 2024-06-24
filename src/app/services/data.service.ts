@@ -1,54 +1,82 @@
-import { Injectable, Signal, signal } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { BehaviorSubject, Observable, map, retry, take, tap } from 'rxjs';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable, map, take } from 'rxjs';
+import { Asset } from '../shared/interfaces/asset.interface';
 import { environment } from '../environments/environment';
 
 @Injectable({
   providedIn: 'root',
 })
 export class DataService {
-  private apiUrl = `${environment.baseUrl}/api`;
-  private assetId = 'AUD/CAD';
+  private apiUrl = '/api';
+  private currentAsset = new BehaviorSubject<Asset | null>(null);
 
-  public token = signal('');
+  headers = {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('token')}`,
+    },
+  };
 
   constructor(private http: HttpClient) {}
 
-  getRealTimePrice(): Observable<any> {
-    return this.http.get(`${this.apiUrl}${this.assetId}/real-time-price`);
+  setCurrentAsset(asset: Asset) {
+    this.currentAsset.next(asset);
   }
 
-  getHistoricalData(): Observable<any> {
-    return this.http.get(`${this.apiUrl}${this.assetId}/historical-data`);
+  getCurrentAsset(): Observable<Asset | null> {
+    return this.currentAsset.asObservable();
   }
 
-  getToken(): void {
-    const body = `grant_type=${environment.grant_type}&client_id=${environment.client_id}&username=${environment.username}&password=${environment.password}`;
-    this.http
-      .post(`/identity/realms/fintatech/protocol/openid-connect/token`, body, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      })
-      .pipe(
-        tap((data: any) => {
-          this.token.set(data.access_token);
-          localStorage.setItem('token', data.access_token);
-        }),
-        take(1)
-      )
-      .subscribe();
-  }
-
-  getInstruments() {
-    const token = localStorage.getItem('token');
+  getInstruments(
+    provider: string = 'oanda',
+    kind: string = 'forex'
+  ): Observable<Asset[]> {
     return this.http
-      .get(`/api/instruments/v1/instruments?provider=oanda&kind=forex`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Access-Control-Allow-Origin': '*',
-        },
-      })
+      .get<Asset[]>(
+        `${this.apiUrl}/instruments/v1/instruments?provider=${provider}&kind=${kind}`,
+        this.headers
+      )
       .pipe(map((res: any) => res.data));
+  }
+
+  getBars(
+    instrumentId: string,
+    provider: string,
+    interval: number,
+    periodicity: string,
+    barsCount: number
+  ): Observable<any> {
+    let params = new HttpParams()
+      .set('instrumentId', instrumentId)
+      .set('provider', provider)
+      .set('interval', interval.toString())
+      .set('periodicity', periodicity)
+      .set('barsCount', barsCount.toString());
+    return this.http.get(`${this.apiUrl}/bars/v1/bars/count-back`, {
+      params,
+      ...this.headers,
+    });
+  }
+
+  // Add a method for authentication if needed
+  authenticate(): void {
+    const body = new URLSearchParams();
+    body.set('grant_type', 'password');
+    body.set('client_id', 'app-cli');
+    body.set('username', environment.username);
+    body.set('password', environment.password);
+
+    this.http
+      .post(
+        `/identity/realms/fintatech/protocol/openid-connect/token`,
+        body.toString(),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        }
+      )
+      .pipe(take(1))
+      .subscribe((data: any) => {
+        localStorage.setItem('token', data.access_token);
+      });
   }
 }
